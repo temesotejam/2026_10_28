@@ -12,6 +12,8 @@
  */
 #include <cstdint>
 #include <cstring>
+#include <cstdio>
+#include "pico/stdio_usb.h"
 #include "pico/stdlib.h"
 #include "hardware/uart.h"
 #include "hardware/irq.h"
@@ -38,6 +40,8 @@ volatile bool g_received_good = false;
 volatile bool g_bad_frame_seen = true;
 volatile uint32_t g_good_count = 0;
 volatile uint32_t g_bad_event_count = 0;
+// USB status output is independent of PIO GP16 -> Uno UART.
+constexpr uint32_t USB_LOG_EVERY_N_REPORTS = 10; // 5 Hz
 
 class SbusParser {
 public:
@@ -125,6 +129,7 @@ int main() {
     uint8_t seq = 0;
     uint32_t observed_bad_events = 0;
     uint32_t next_report = time_us_32();
+    uint32_t report_counter = 0;
 
     for (;;) {
         const uint32_t now = time_us_32();
@@ -137,7 +142,7 @@ int main() {
         if ((int32_t)(now - next_report) >= 0) next_report = now + REPORT_US;
 
         uint16_t ch3;
-        uint32_t last_good, bad_events;
+        uint32_t last_good, bad_events, good_frames;
         bool have_good, bad_seen;
         uint32_t irq = save_and_disable_interrupts();
         ch3 = g_ch3;
@@ -145,6 +150,7 @@ int main() {
         have_good = g_received_good;
         bad_seen = g_bad_frame_seen;
         bad_events = g_bad_event_count;
+        good_frames = g_good_count;
         restore_interrupts(irq);
 
         // Do not miss a brief loss/failsafe event that is followed by a good
@@ -177,5 +183,18 @@ int main() {
         memcpy(out, pkt, sizeof(out));
         out[7] = crc8(out, 7);
         for (uint8_t b : out) uart_tx_program_putc(pio, sm, b);
+
+        // Diagnostic USB CDC output (no change to UART frame format).
+        // No logging inside the SBUS IRQ or during PIO bit timing.
+        if (++report_counter >= USB_LOG_EVERY_N_REPORTS) {
+            report_counter = 0;
+            if (stdio_usb_connected()) {
+                const uint32_t age_ms = have_good ? (uint32_t)(now - last_good)/1000u : 999999u;
+                printf("PICO ch3=%u sbus=%u armed=%u age_ms=%lu good=%lu fs_events=%lu unsafe_tick=%u\\n",
+                    (unsigned)ch3, (unsigned)healthy, (unsigned)armed,
+                    (unsigned long)age_ms, (unsigned long)good_frames,
+                    (unsigned long)bad_events, (unsigned)unsafe_event);
+            }
+        }
     }
 }
