@@ -1,0 +1,17 @@
+name: Verify Arduino Uno R3 sketch
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: arduino/setup-arduino-cli@v2
+      - run: |
+          arduino-cli core update-index
+          arduino-cli core install arduino:avr
+      - name: Compile Uno R3 sketch
+        run: arduino-cli compile --fqbn arduino:avr:uno arduino/UnoR3_UART_DShot300
