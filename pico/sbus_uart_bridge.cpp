@@ -37,6 +37,7 @@ volatile uint32_t g_last_good_us = 0;
 volatile bool g_received_good = false;
 volatile bool g_bad_frame_seen = true;
 volatile uint32_t g_good_count = 0;
+volatile uint32_t g_bad_event_count = 0;
 
 class SbusParser {
 public:
@@ -79,6 +80,7 @@ void on_uart0_rx() {
             // A bad frame must invalidate the link immediately.
             g_bad_frame_seen = true;
             g_received_good = false;
+            ++g_bad_event_count;
         } else {
             g_ch3 = value;
             g_last_good_us = now;
@@ -121,6 +123,7 @@ int main() {
     bool low_seen = false;
     uint32_t low_since = 0;
     uint8_t seq = 0;
+    uint32_t observed_bad_events = 0;
     uint32_t next_report = time_us_32();
 
     for (;;) {
@@ -134,16 +137,21 @@ int main() {
         if ((int32_t)(now - next_report) >= 0) next_report = now + REPORT_US;
 
         uint16_t ch3;
-        uint32_t last_good;
+        uint32_t last_good, bad_events;
         bool have_good, bad_seen;
         uint32_t irq = save_and_disable_interrupts();
         ch3 = g_ch3;
         last_good = g_last_good_us;
         have_good = g_received_good;
         bad_seen = g_bad_frame_seen;
+        bad_events = g_bad_event_count;
         restore_interrupts(irq);
 
-        const bool healthy = have_good && !bad_seen &&
+        // Do not miss a brief loss/failsafe event that is followed by a good
+        // SBUS frame before the next 20 ms UART reporting tick.
+        const bool unsafe_event = bad_events != observed_bad_events;
+        observed_bad_events = bad_events;
+        const bool healthy = !unsafe_event && have_good && !bad_seen &&
                              (uint32_t)(now - last_good) <= SBUS_TIMEOUT_US;
         if (!healthy) {
             armed = false;
