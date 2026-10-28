@@ -190,7 +190,7 @@ int main() {
             report_counter = 0;
             if (stdio_usb_connected()) {
                 const uint32_t age_ms = have_good ? (uint32_t)(now - last_good)/1000u : 999999u;
-                printf("PICO ch3=%u sbus=%u armed=%u age_ms=%lu good=%lu fs_events=%lu unsafe_tick=%u\\n",
+                printf("PICO ch3=%u sbus=%u armed=%u age_ms=%lu good=%lu fs_events=%lu unsafe_tick=%u\n",
                     (unsigned)ch3, (unsigned)healthy, (unsigned)armed,
                     (unsigned long)age_ms, (unsigned long)good_frames,
                     (unsigned long)bad_events, (unsigned)unsafe_event);
