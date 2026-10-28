@@ -25,7 +25,8 @@ static const uint32_t BOOT_STOP_US = 3000000UL;
 static const uint32_t LOW_REARM_US = 200000UL;
 static const uint16_t CH3_STOP = 448;      // 368 + 80 as in original Pico FC
 static const uint16_t CH3_MAX = 1680;
-static const uint8_t LED_PIN = 7;
+static const uint8_t LED_PIN = 7;  // HIGH: Uno sends nonzero DShot throttle
+static const uint8_t LINK_PIN = 6; // HIGH: UART fresh + Pico SBUS healthy/armed
 
 uint8_t packet[8] = {};
 uint8_t index_rx = 0;
@@ -105,6 +106,7 @@ void sendFrame(uint16_t bits) {
 void setup() {
   pinMode(8, OUTPUT);
   pinMode(LED_PIN, OUTPUT);
+  pinMode(LINK_PIN, OUTPUT);
   PORTB = 0; // DShot idle LOW
   Serial.begin(115200); // ONLY RX from Pico, never Serial.print
   bootUs = micros();
@@ -133,8 +135,10 @@ void loop() {
     command = (uint16_t)(48u + (uint32_t)(c - CH3_STOP) * 1999u /
                         (CH3_MAX - CH3_STOP));
   }
-  // OFF = no validated UART; blink = awaiting low throttle; ON = armed.
-  digitalWrite(LED_PIN, !recent ? LOW : (isReady ? HIGH : ((now / 250000UL) % 2 == 0)));
+  // Diagnostic outputs: D7 HIGH means DShot command>0, D6 HIGH
+  // means Uno received a fresh healthy-and-armed Pico packet.
+  digitalWrite(LED_PIN, command > 0 ? HIGH : LOW);
+  digitalWrite(LINK_PIN, linkOk ? HIGH : LOW);
   const uint32_t txNow = micros();
   if ((uint32_t)(txNow - lastDshotUs) >= DSHOT_PERIOD_US) {
     lastDshotUs = txNow;
