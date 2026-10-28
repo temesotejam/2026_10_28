@@ -1,0 +1,44 @@
+name: Build Pico and Pico 2 UF2
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        board: [pico, pico2]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install ARM cross-toolchain
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y gcc-arm-none-eabi libnewlib-arm-none-eabi ninja-build cmake
+      - name: Checkout Pico SDK 2.2.0
+        uses: actions/checkout@v4
+        with:
+          repository: raspberrypi/pico-sdk
+          ref: 2.2.0
+          path: pico-sdk
+          submodules: recursive
+      - name: Validate UART packet protocol
+        run: python3 tests/check_protocol.py
+      - name: Configure
+        env:
+          PICO_SDK_PATH: ${{ github.workspace }}/pico-sdk
+        run: cmake -S . -B build -G Ninja -DPICO_BOARD=${{ matrix.board }} -DCMAKE_BUILD_TYPE=Release
+      - name: Build firmware
+        run: cmake --build build --parallel 2
+      - name: Package UF2
+        run: |
+          mkdir -p dist
+          cp build/sbus_uart_bridge.uf2 dist/${{ matrix.board }}_sbus_uart_bridge.uf2
+          ls -lh dist/
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.board }}-SBUS-UART-UF2
+          path: dist/*.uf2
+          if-no-files-found: error
